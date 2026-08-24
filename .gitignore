@@ -11,3 +11,11 @@ output/frames/
 *.mov
 .DS_Store
 Thumbs.db
+
+# secrets
+.env
+.env.local
+*.pem
+*.key
+credentials.json
+secrets.json
