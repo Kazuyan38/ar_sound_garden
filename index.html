@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AR Sound Garden</title>
+  <meta name="description" content="WebAR interactive cyber-pop EDM sound garden" />
+
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="js/audio-loader.js"></script>
+  <script src="js/spatial-audio.js"></script>
+  <script src="js/cyber-effects.js"></script>
+
+  <style>
+    :root {
+      --pink: #ff10f0;
+      --cyan: #00ffff;
+      --purple: #bf00ff;
+      --green: #7fff00;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      background: #000;
+      color: #fff;
+    }
+
+    #enter-overlay {
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at center, rgba(191, 0, 255, 0.25), rgba(0, 0, 0, 0.95) 70%),
+        #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      transition: opacity 0.6s ease;
+    }
+    #enter-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #enter-overlay h1 {
+      font-size: clamp(28px, 8vw, 56px);
+      margin: 0 0 12px;
+      letter-spacing: 0.18em;
+      font-weight: 200;
+      background: linear-gradient(90deg, var(--pink), var(--cyan));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      text-shadow: 0 0 24px rgba(255, 16, 240, 0.4);
+    }
+    #enter-overlay p {
+      max-width: 80vw;
+      text-align: center;
+      font-size: 14px;
+      color: #c7c7d4;
+      line-height: 1.6;
+      margin: 0 0 32px;
+    }
+    #enter-btn {
+      appearance: none;
+      border: 2px solid var(--cyan);
+      background: rgba(0, 255, 255, 0.08);
+      color: #fff;
+      font-size: 18px;
+      letter-spacing: 0.25em;
+      padding: 16px 36px;
+      cursor: pointer;
+      border-radius: 999px;
+      box-shadow:
+        0 0 24px rgba(0, 255, 255, 0.4),
+        inset 0 0 12px rgba(255, 16, 240, 0.25);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    #enter-btn:hover {
+      transform: scale(1.04);
+      box-shadow:
+        0 0 36px rgba(0, 255, 255, 0.7),
+        inset 0 0 16px rgba(255, 16, 240, 0.4);
+    }
+    #enter-btn:disabled {
+      opacity: 0.5;
+      cursor: wait;
+    }
+    #legend {
+      position: fixed;
+      bottom: 16px;
+      left: 16px;
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      color: rgba(255,255,255,0.55);
+      z-index: 50;
+      pointer-events: none;
+      line-height: 1.7;
+    }
+    #legend .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    /* iOS / non-WebXR camera passthrough background */
+    #camera-feed {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: -1;
+      display: none;
+      background: #000;
+      transform: translateZ(0); /* iOSの再描画タイミング安定化 */
+    }
+    body.pseudo-ar #camera-feed {
+      display: block;
+    }
+    body.pseudo-ar a-scene {
+      background: transparent !important;
+    }
+    body.pseudo-ar .a-canvas {
+      background: transparent !important;
+    }
+
+    #hint-banner {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      color: rgba(255,255,255,0.7);
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(0,255,255,0.4);
+      z-index: 50;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.6s ease;
+    }
+    #hint-banner.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <video id="camera-feed" autoplay playsinline muted></video>
+
+  <div id="enter-overlay">
+    <h1>AR SOUND GARDEN</h1>
+    <p>
+      5体の発光オブジェクトがあなたの周囲に出現します。<br/>
+      スマホを回すと音が方向によって変わり、自分だけのミックスが生まれます。<br/>
+      <small>※ Android Chrome は本格ARモード、iPhone Safari はカメラ＋ジャイロの疑似ARモードで起動します。</small>
+    </p>
+    <button id="enter-btn">TAP TO ENTER</button>
+  </div>
+
+  <div id="hint-banner"></div>
+
+  <div id="legend">
+    <div><span class="dot" style="color:#ff10f0;background:#ff10f0"></span>DRUM</div>
+    <div><span class="dot" style="color:#bf00ff;background:#bf00ff"></span>BASS</div>
+    <div><span class="dot" style="color:#00ffff;background:#00ffff"></span>MELODY</div>
+    <div><span class="dot" style="color:#ffffff;background:#ffffff"></span>PAD</div>
+    <div><span class="dot" style="color:#7fff00;background:#7fff00"></span>ARP</div>
+  </div>
+
+  <a-scene
+    renderer="colorManagement: true; physicallyCorrectLights: true; antialias: true; alpha: true"
+    background="color: #000010"
+    fog="type: exponential; color: #000010; density: 0.05"
+    webxr="optionalFeatures: hit-test, local-floor, bounded-floor, dom-overlay; overlayElement: #legend"
+    vr-mode-ui="enabled: false"
+    loading-screen="dotsColor: #ff10f0; backgroundColor: #000"
+  >
+    <!-- camera + listener -->
+    <a-entity id="rig" position="0 0 0">
+      <a-camera
+        id="camera"
+        position="0 1.6 0"
+        wasd-controls="acceleration: 30"
+        look-controls="pointerLockEnabled: false"
+        audio-listener
+      ></a-camera>
+    </a-entity>
+
+    <!-- ambient grid floor (visible in non-AR preview only) -->
+    <a-entity id="grid-floor-entity" grid-floor="size: 16; divisions: 32; color1: #ff10f0; color2: #00ffff" position="0 0 0"></a-entity>
+
+    <!-- 5 sound objects on circle around user -->
+
+    <!-- DRUM: front, low, hot pink cube -->
+    <a-box
+      id="obj-drum"
+      position="0 0.7 -1.8"
+      width="0.42" height="0.42" depth="0.42"
+      neon-bloom="color: #ff10f0; intensity: 2.4; pulse: 0.9"
+      beat-pulse="strength: 0.22; baseScale: 1.0"
+      slow-spin="axis: 1 1 0; speed: 0.18"
+      spatial-audio-source="track: drum"
+      particle-aura="color: #ff10f0; count: 80; radius: 0.55; size: 0.022; speed: 0.6"
+    ></a-box>
+
+    <!-- BASS: front-right, mid, purple sphere -->
+    <a-sphere
+      id="obj-bass"
+      position="1.6 1.0 -0.8"
+      radius="0.34"
+      segments-width="24" segments-height="16"
+      neon-bloom="color: #bf00ff; intensity: 2.0; pulse: 0.8"
+      beat-pulse="multiplier: 0.5; strength: 0.16"
+      slow-spin="axis: 0 1 0; speed: 0.15"
+      spatial-audio-source="track: bass"
+      particle-aura="color: #bf00ff; count: 60; radius: 0.5; size: 0.02; speed: 0.4"
+    ></a-sphere>
+
+    <!-- MELODY: front-left, higher, cyan octahedron -->
+    <a-octahedron
+      id="obj-melody"
+      position="-1.6 1.4 -0.8"
+      radius="0.36"
+      scale="1 1.4 1"
+      neon-bloom="color: #00ffff; intensity: 2.2; pulse: 0.5"
+      beat-pulse="multiplier: 2.0; strength: 0.12"
+      slow-spin="axis: 0 1 0.2; speed: 0.35"
+      spatial-audio-source="track: melody"
+      particle-aura="color: #00ffff; count: 70; radius: 0.5; size: 0.022; speed: 0.5"
+    ></a-octahedron>
+
+    <!-- ARP: back-right, high, green icosahedron -->
+    <a-icosahedron
+      id="obj-arp"
+      position="1.3 2.0 1.3"
+      radius="0.28"
+      neon-bloom="color: #7fff00; intensity: 2.4; pulse: 0.4"
+      beat-pulse="multiplier: 4.0; strength: 0.10"
+      slow-spin="axis: 1 0.5 1; speed: 0.5"
+      spatial-audio-source="track: arp"
+      particle-aura="color: #7fff00; count: 90; radius: 0.45; size: 0.018; speed: 0.8"
+    ></a-icosahedron>
+
+    <!-- PAD: back-left, very high, white torus -->
+    <a-torus
+      id="obj-pad"
+      position="-1.3 2.3 1.0"
+      radius="0.42"
+      radius-tubular="0.08"
+      segments-tubular="48"
+      segments-radial="20"
+      rotation="60 20 0"
+      neon-bloom="color: #ffffff; intensity: 1.6; pulse: 0.3"
+      beat-pulse="multiplier: 0.25; strength: 0.08"
+      slow-spin="axis: 0 1 0.3; speed: 0.12"
+      spatial-audio-source="track: pad"
+      particle-aura="color: #ffffff; count: 50; radius: 0.6; size: 0.024; speed: 0.3"
+    ></a-torus>
+
+    <!-- subtle ambient light for non-emissive falloff -->
+    <a-entity light="type: ambient; color: #221133; intensity: 0.4"></a-entity>
+  </a-scene>
+
+  <script>
+    (function () {
+      const enterBtn = document.getElementById("enter-btn");
+      const overlay  = document.getElementById("enter-overlay");
+      const scene    = document.querySelector("a-scene");
+      const cameraFeed = document.getElementById("camera-feed");
+      const hintBanner = document.getElementById("hint-banner");
+      const gridFloor  = document.getElementById("grid-floor-entity");
+
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      const isMobile = isIOS || /Android/i.test(navigator.userAgent);
+
+      function showHint(msg, durationMs) {
+        hintBanner.textContent = msg;
+        hintBanner.classList.add("show");
+        if (durationMs) {
+          setTimeout(() => hintBanner.classList.remove("show"), durationMs);
+        }
+      }
+
+      async function requestDeviceOrientation() {
+        if (typeof DeviceOrientationEvent !== "undefined" &&
+            typeof DeviceOrientationEvent.requestPermission === "function") {
+          try {
+            const state = await DeviceOrientationEvent.requestPermission();
+            console.log("[orientation] permission:", state);
+            return state === "granted";
+          } catch (e) {
+            console.warn("[orientation] request failed:", e);
+            return false;
+          }
+        }
+        return true;
+      }
+
+      async function requestDeviceMotion() {
+        if (typeof DeviceMotionEvent !== "undefined" &&
+            typeof DeviceMotionEvent.requestPermission === "function") {
+          try {
+            const state = await DeviceMotionEvent.requestPermission();
+            console.log("[motion] permission:", state);
+            return state === "granted";
+          } catch (e) {
+            console.warn("[motion] request failed:", e);
+            return false;
+          }
+        }
+        return true;
+      }
+
+      async function startCameraFeed() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          console.warn("[camera] getUserMedia unavailable");
+          return false;
+        }
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: "environment" },
+              width:  { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+            audio: false,
+          });
+          cameraFeed.srcObject = stream;
+          await cameraFeed.play().catch(() => {});
+          console.log("[camera] feed started");
+          return true;
+        } catch (e) {
+          console.warn("[camera] start failed:", e);
+          return false;
+        }
+      }
+
+      function enterPseudoArMode() {
+        document.body.classList.add("pseudo-ar");
+        if (scene.hasAttribute("background")) {
+          scene.removeAttribute("background");
+        }
+        if (scene.object3D) scene.object3D.background = null;
+        if (gridFloor && gridFloor.object3D) gridFloor.object3D.visible = false;
+        if (isMobile) {
+          showHint("PHONEを回して周囲を見渡してね", 5000);
+        }
+      }
+
+      async function enter() {
+        enterBtn.disabled = true;
+        enterBtn.textContent = "LOADING...";
+
+        try {
+          await window.AudioManager.start();
+        } catch (e) {
+          console.error(e);
+          enterBtn.textContent = "AUDIO FAILED — TAP AGAIN";
+          enterBtn.disabled = false;
+          return;
+        }
+
+        // iOS 13+ はジャイロ/モーションを明示許可が必要
+        if (isIOS) {
+          await requestDeviceOrientation();
+          await requestDeviceMotion();
+        }
+
+        let webxrAR = false;
+        try {
+          webxrAR = !!(navigator.xr && await navigator.xr.isSessionSupported("immersive-ar"));
+        } catch (e) {
+          webxrAR = false;
+        }
+
+        if (webxrAR) {
+          overlay.classList.add("hidden");
+          try {
+            await scene.enterAR();
+            if (gridFloor && gridFloor.object3D) gridFloor.object3D.visible = false;
+            showHint("AR起動！部屋の中を歩いてみよう", 5000);
+            scene.addEventListener("exit-vr", () => {
+              if (gridFloor && gridFloor.object3D) gridFloor.object3D.visible = true;
+            }, { once: true });
+            return;
+          } catch (e) {
+            console.warn("[webxr] enterAR failed, falling back to pseudo-AR:", e);
+          }
+        }
+
+        // 疑似ARモード（iOS Safariなどモバイル）
+        if (isMobile) {
+          const camOk = await startCameraFeed();
+          if (camOk) {
+            overlay.classList.add("hidden");
+            enterPseudoArMode();
+          } else {
+            overlay.classList.add("hidden");
+            showHint("カメラ拒否 → 3Dプレビューで体験できます", 4000);
+          }
+          return;
+        }
+
+        // デスクトップ: 3Dプレビューモード
+        overlay.classList.add("hidden");
+        showHint("マウスドラッグで視点回転 / W,A,S,Dで移動", 6000);
+      }
+
+      enterBtn.addEventListener("click", enter, { once: false });
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") enter();
+      });
+    })();
+  </script>
+</body>
+</html>
