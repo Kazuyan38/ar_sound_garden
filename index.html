@@ -349,12 +349,23 @@
         }
       }
 
-      function enterPseudoArMode() {
-        document.body.classList.add("pseudo-ar");
+      // Any AR mode — native WebXR passthrough or the iOS camera-feed fallback —
+      // needs a transparent scene, or this opaque clear color paints over the
+      // real-world camera image the browser/video is compositing behind it.
+      const ORIGINAL_BG = "color: #000010";
+      function clearArBackground() {
         if (scene.hasAttribute("background")) {
           scene.removeAttribute("background");
         }
         if (scene.object3D) scene.object3D.background = null;
+      }
+      function restoreBackground() {
+        scene.setAttribute("background", ORIGINAL_BG);
+      }
+
+      function enterPseudoArMode() {
+        document.body.classList.add("pseudo-ar");
+        clearArBackground();
         if (gridFloor && gridFloor.object3D) gridFloor.object3D.visible = false;
         if (isMobile) {
           showHint("PHONEを回して周囲を見渡してね", 5000);
@@ -391,10 +402,12 @@
           overlay.classList.add("hidden");
           try {
             await scene.enterAR();
+            clearArBackground();
             if (gridFloor && gridFloor.object3D) gridFloor.object3D.visible = false;
             showHint("AR起動！部屋の中を歩いてみよう", 5000);
             scene.addEventListener("exit-vr", () => {
               if (gridFloor && gridFloor.object3D) gridFloor.object3D.visible = true;
+              restoreBackground();
             }, { once: true });
             return;
           } catch (e) {
